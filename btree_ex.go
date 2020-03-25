@@ -1,10 +1,11 @@
-package main
+package gosqlite
 
 import (
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math"
 )
 
 const (
@@ -29,10 +30,15 @@ const (
 	offsetOverflowPage = pageSize - 4
 )
 
-type bplusTree struct {
+// BPlusTree b+ tree
+type BPlusTree struct {
 	data  []byte
 	leaf  uint32
 	order int
+}
+
+func ceil(n int64) int {
+	return int(math.Ceil(float64(n) / 2))
 }
 
 func blockCopy(src []byte, srcOffset int, dst []byte, dstOffset, count int) (bool, error) {
@@ -72,124 +78,124 @@ func getInt64(data []byte, offset int) uint64 {
 	return binary.BigEndian.Uint64(data[offset:len])
 }
 
-func (b *bplusTree) getPageInt32(page uint32, offset int) uint32 {
+func (b *BPlusTree) getPageInt32(page uint32, offset int) uint32 {
 	data := b.getPageData(page)
 	return getInt32(data, offset)
 }
 
-func (b *bplusTree) setPageInt32(page uint32, offset int, v uint32) {
+func (b *BPlusTree) setPageInt32(page uint32, offset int, v uint32) {
 	data := b.getPageData(page)
 	setInt32(data, offset, v)
 }
 
-func (b *bplusTree) getPageData(page uint32) []byte {
+func (b *BPlusTree) getPageData(page uint32) []byte {
 	offset := page * pageSize
 	len := offset + pageSize
 	return b.data[offset:len]
 }
 
-func (b *bplusTree) inc(page uint32) {
+func (b *BPlusTree) inc(page uint32) {
 	numberOfKey := b.getNumberOfKey(page) + 1
 	b.setNumberOfKey(page, numberOfKey)
 }
 
-func (b *bplusTree) getMaxKey(page uint32) uint64 {
+func (b *BPlusTree) getMaxKey(page uint32) uint64 {
 	numberOfKey := int(b.getNumberOfKey(page))
 	return b.getKey(page, numberOfKey-1)
 }
 
-func (b *bplusTree) dec(page uint32) {
+func (b *BPlusTree) dec(page uint32) {
 	numberOfKey := b.getNumberOfKey(page) - 1
 	b.setNumberOfKey(page, numberOfKey)
 }
 
-func (b *bplusTree) setPageNo(page uint32, v uint32) {
+func (b *BPlusTree) setPageNo(page uint32, v uint32) {
 	b.setPageInt32(page, offsetPageNo, v)
 }
 
-func (b *bplusTree) getPageNo(page uint32) uint32 {
+func (b *BPlusTree) getPageNo(page uint32) uint32 {
 	return b.getPageInt32(page, offsetPageNo)
 }
 
-func (b *bplusTree) setNext(page uint32, v uint32) {
+func (b *BPlusTree) setNext(page uint32, v uint32) {
 	b.setPageInt32(page, offsetNext, v)
 }
 
-func (b *bplusTree) getNext(page uint32) uint32 {
+func (b *BPlusTree) getNext(page uint32) uint32 {
 	return b.getPageInt32(page, offsetNext)
 }
 
-func (b *bplusTree) setNumberOfKey(page uint32, v uint32) {
+func (b *BPlusTree) setNumberOfKey(page uint32, v uint32) {
 	b.setPageInt32(page, offsetNumberOfKey, v)
 }
 
-func (b *bplusTree) getNumberOfKey(page uint32) uint32 {
+func (b *BPlusTree) getNumberOfKey(page uint32) uint32 {
 	return b.getPageInt32(page, offsetNumberOfKey)
 }
 
-func (b *bplusTree) setNodeType(page uint32, v byte) {
+func (b *BPlusTree) setNodeType(page uint32, v byte) {
 	data := b.getPageData(page)
 	data[offsetNodeType] = v
 }
 
-func (b *bplusTree) getNodeType(page uint32) byte {
+func (b *BPlusTree) getNodeType(page uint32) byte {
 	data := b.getPageData(page)
 	return data[offsetNodeType]
 }
 
-func (b *bplusTree) setUsed(page uint32, v byte) {
+func (b *BPlusTree) setUsed(page uint32, v byte) {
 	data := b.getPageData(page)
 	data[offsetUsed] = v
 }
 
-func (b *bplusTree) isUsed(page uint32) bool {
+func (b *BPlusTree) isUsed(page uint32) bool {
 	data := b.getPageData(page)
 	return data[offsetUsed] == nodeUsed
 }
 
-func (b *bplusTree) setParent(page uint32, v uint32) {
+func (b *BPlusTree) setParent(page uint32, v uint32) {
 	b.setPageInt32(page, offsetParent, v)
 }
 
-func (b *bplusTree) getParent(page uint32) uint32 {
+func (b *BPlusTree) getParent(page uint32) uint32 {
 	return b.getPageInt32(page, offsetParent)
 }
 
-func (b *bplusTree) setKey(page uint32, index int, k uint64) {
+func (b *BPlusTree) setKey(page uint32, index int, k uint64) {
 	data := b.getPageData(page)
 	offset := offsetKey + index*12
 	setInt64(data, offset, k)
 }
 
-func (b *bplusTree) getKey(page uint32, index int) uint64 {
+func (b *BPlusTree) getKey(page uint32, index int) uint64 {
 	data := b.getPageData(page)
 	offset := offsetKey + index*12
 	return getInt64(data, offset)
 }
 
-func (b *bplusTree) setCellPtr(page uint32, index int, k uint32) {
+func (b *BPlusTree) setCellPtr(page uint32, index int, k uint32) {
 	data := b.getPageData(page)
 	offset := offsetKey + index*12 + 8
 	setInt32(data, offset, k)
 }
 
-func (b *bplusTree) getCellPtr(page uint32, index int) uint32 {
+func (b *BPlusTree) getCellPtr(page uint32, index int) uint32 {
 	data := b.getPageData(page)
 	offset := offsetKey + index*12 + 8
 	return getInt32(data, offset)
 }
 
-func (b *bplusTree) setUsablePtr(page uint32, ptr uint32) {
+func (b *BPlusTree) setUsablePtr(page uint32, ptr uint32) {
 	data := b.getPageData(page)
 	setInt32(data, offsetUsablePtr, ptr)
 }
 
-func (b *bplusTree) getUsablePtr(page uint32) uint32 {
+func (b *BPlusTree) getUsablePtr(page uint32) uint32 {
 	data := b.getPageData(page)
 	return getInt32(data, offsetUsablePtr)
 }
 
-func (b *bplusTree) getKeyIndex(page uint32, key uint64) int {
+func (b *BPlusTree) getKeyIndex(page uint32, key uint64) int {
 	numberOfKey := int(b.getNumberOfKey(page))
 	for i := 0; i < numberOfKey; i++ {
 		ikey := b.getKey(page, i)
@@ -201,17 +207,17 @@ func (b *bplusTree) getKeyIndex(page uint32, key uint64) int {
 	return -1
 }
 
-func (b *bplusTree) getChildByIndex(page uint32, index int) uint32 {
+func (b *BPlusTree) getChildByIndex(page uint32, index int) uint32 {
 	key := b.getKey(page, index)
 	return b.getChildByKey(page, key)
 }
 
-func (b *bplusTree) getChildByKey(page uint32, key uint64) uint32 {
+func (b *BPlusTree) getChildByKey(page uint32, key uint64) uint32 {
 	cell := b.getKeyCell(page, key)
 	return binary.BigEndian.Uint32(cell)
 }
 
-func (b *bplusTree) marshal(child uint32, payload []byte) []byte {
+func (b *BPlusTree) marshal(child uint32, payload []byte) []byte {
 	if payload != nil {
 		cell := make([]byte, 8+len(payload))
 		binary.BigEndian.PutUint32(cell, child)
@@ -246,7 +252,7 @@ func shift(data []byte, src int, len int, shiftSize int) {
 	}
 }
 
-func (b *bplusTree) shiftCellPtr(page uint32, cellptr uint32, shiftSize int) {
+func (b *BPlusTree) shiftCellPtr(page uint32, cellptr uint32, shiftSize int) {
 	numberOfKey := int(b.getNumberOfKey(page))
 	for i := 0; i < numberOfKey; i++ {
 		icellPtr := b.getCellPtr(page, i)
@@ -256,7 +262,7 @@ func (b *bplusTree) shiftCellPtr(page uint32, cellptr uint32, shiftSize int) {
 	}
 }
 
-func (b *bplusTree) deleteCell(page uint32, index int) {
+func (b *BPlusTree) deleteCell(page uint32, index int) {
 	cellptr := b.getCellPtr(page, index)
 	if cellptr == 0 {
 		return
@@ -275,7 +281,7 @@ func (b *bplusTree) deleteCell(page uint32, index int) {
 	b.setCellPtr(page, index, 0)
 }
 
-func (b *bplusTree) insertOrUpdateCell(page uint32, index int, cell []byte) {
+func (b *BPlusTree) insertOrUpdateCell(page uint32, index int, cell []byte) {
 	cellPtr := b.getCellPtr(page, index)
 	data := b.getPageData(page)
 	shiftSize := 0
@@ -299,7 +305,7 @@ func (b *bplusTree) insertOrUpdateCell(page uint32, index int, cell []byte) {
 	blockCopy(cell, 0, data, int(cellPtr)+shiftSize, len(cell))
 }
 
-func (b *bplusTree) getKeyCell(page uint32, key uint64) []byte {
+func (b *BPlusTree) getKeyCell(page uint32, key uint64) []byte {
 	index := b.getKeyIndex(page, key)
 	if index == -1 {
 		return nil
@@ -321,7 +327,7 @@ func (b *bplusTree) getKeyCell(page uint32, key uint64) []byte {
 	}
 }
 
-func (b *bplusTree) getKeyPayload(page uint32, key uint64) []byte {
+func (b *BPlusTree) getKeyPayload(page uint32, key uint64) []byte {
 	cell := b.getKeyCell(page, key)
 	if b.getNodeType(page) == nodeTypeLeaf {
 		return cell[8:]
@@ -329,7 +335,7 @@ func (b *bplusTree) getKeyPayload(page uint32, key uint64) []byte {
 	return nil
 }
 
-func (b *bplusTree) setChild(page uint32, index int, child uint32, payload []byte) {
+func (b *BPlusTree) setChild(page uint32, index int, child uint32, payload []byte) {
 	if payload == nil {
 		cell := make([]byte, 4)
 		binary.BigEndian.PutUint32(cell, child)
@@ -340,17 +346,17 @@ func (b *bplusTree) setChild(page uint32, index int, child uint32, payload []byt
 	}
 }
 
-func (b *bplusTree) updateChild(page uint32, index int, child uint32) {
+func (b *BPlusTree) updateChild(page uint32, index int, child uint32) {
 	cell := make([]byte, 4)
 	binary.BigEndian.PutUint32(cell, child)
 	b.insertOrUpdateCell(page, index, cell)
 }
 
-func (b *bplusTree) getChild(page uint32, index int) uint32 {
+func (b *BPlusTree) getChild(page uint32, index int) uint32 {
 	return b.getChildByIndex(page, index)
 }
 
-func (b *bplusTree) setChildParent(page uint32) {
+func (b *BPlusTree) setChildParent(page uint32) {
 	numberOfKey := int(b.getNumberOfKey(page))
 	for i := 0; i < numberOfKey; i++ {
 		ichild := b.getChild(page, i)
@@ -358,7 +364,7 @@ func (b *bplusTree) setChildParent(page uint32) {
 	}
 }
 
-func (b *bplusTree) allocte() uint32 {
+func (b *BPlusTree) allocte() uint32 {
 	for i := 2; i < 32; i++ {
 		if !b.isUsed(uint32(i)) {
 			b.setUsed(uint32(i), nodeUsed)
@@ -369,7 +375,7 @@ func (b *bplusTree) allocte() uint32 {
 	return 0
 }
 
-func (b *bplusTree) copy(src uint32, dst uint32) {
+func (b *BPlusTree) copy(src uint32, dst uint32) {
 	srcData := b.getPageData(src)
 	dstData := b.getPageData(dst)
 
@@ -377,7 +383,7 @@ func (b *bplusTree) copy(src uint32, dst uint32) {
 	b.setPageNo(dst, dst)
 }
 
-func (b *bplusTree) search(key uint64) uint32 {
+func (b *BPlusTree) search(key uint64) uint32 {
 	if b.getNodeType(rootPageNo) == nodeTypeLeaf {
 		return rootPageNo
 	}
@@ -385,7 +391,8 @@ func (b *bplusTree) search(key uint64) uint32 {
 	return b.searchInternalNode(rootPageNo, key)
 }
 
-func (b *bplusTree) rangeSearch(key1 uint64, key2 uint64) {
+// RangeSearch to search key from key1 to key2
+func (b *BPlusTree) RangeSearch(key1 uint64, key2 uint64) {
 	startPage := b.search(key1)
 	endPage := b.search(key2)
 
@@ -406,13 +413,14 @@ func (b *bplusTree) rangeSearch(key1 uint64, key2 uint64) {
 	}
 }
 
-func (b *bplusTree) write() {
+// Write to write b+ tree to file
+func (b *BPlusTree) Write(fileName string) {
 	setInt32(b.data, 0, uint32(b.order))
 	setInt32(b.data, 4, b.leaf)
-	ioutil.WriteFile("db0.log", b.data, 777)
+	ioutil.WriteFile(fileName, b.data, 777)
 }
 
-func (b *bplusTree) searchInternalNode(pageNo uint32, key uint64) uint32 {
+func (b *BPlusTree) searchInternalNode(pageNo uint32, key uint64) uint32 {
 	numberOfKey := int(b.getNumberOfKey(pageNo))
 	k := numberOfKey - 1
 	for i := 0; i < numberOfKey; i++ {
@@ -430,7 +438,7 @@ func (b *bplusTree) searchInternalNode(pageNo uint32, key uint64) uint32 {
 	return b.searchInternalNode(child, key)
 }
 
-func (b *bplusTree) updateKey(pageNo uint32, oldKey uint64, newKey uint64) {
+func (b *BPlusTree) updateKey(pageNo uint32, oldKey uint64, newKey uint64) {
 	numberOfKey := int(b.getNumberOfKey(pageNo))
 	for i := 0; i < numberOfKey; i++ {
 		if b.getKey(pageNo, i) == oldKey {
@@ -439,7 +447,7 @@ func (b *bplusTree) updateKey(pageNo uint32, oldKey uint64, newKey uint64) {
 	}
 }
 
-func (b *bplusTree) insertAndNotSplit(pageNo uint32, key uint64, child uint32, payload []byte) {
+func (b *BPlusTree) insertAndNotSplit(pageNo uint32, key uint64, child uint32, payload []byte) {
 	numberOfKey := int(b.getNumberOfKey(pageNo))
 	oldMaxKey := b.getKey(pageNo, numberOfKey-1)
 	k := numberOfKey
@@ -467,7 +475,7 @@ func (b *bplusTree) insertAndNotSplit(pageNo uint32, key uint64, child uint32, p
 	b.setNumberOfKey(pageNo, uint32(numberOfKey+1))
 }
 
-func (b *bplusTree) insertAndSplitRoot(root uint32, leftPage uint32, rightPage uint32) {
+func (b *BPlusTree) insertAndSplitRoot(root uint32, leftPage uint32, rightPage uint32) {
 	// set root node
 	leftMaxKey := b.getMaxKey(leftPage)
 	rightMaxKey := b.getMaxKey(rightPage)
@@ -491,7 +499,7 @@ func (b *bplusTree) insertAndSplitRoot(root uint32, leftPage uint32, rightPage u
 	}
 }
 
-func (b *bplusTree) insertAndSplitKey(pageNo uint32, key uint64, child uint32, payload []byte) uint32 {
+func (b *BPlusTree) insertAndSplitKey(pageNo uint32, key uint64, child uint32, payload []byte) uint32 {
 	rightPageNo := b.allocte()
 	leftNumberOfKey := ceil(int64(b.order))
 	rightNumberOfKey := b.order - leftNumberOfKey + 1
@@ -539,7 +547,7 @@ func (b *bplusTree) insertAndSplitKey(pageNo uint32, key uint64, child uint32, p
 }
 
 // TODO add child parameter,
-func (b *bplusTree) insertAndsplit(pageNo uint32, key uint64, child uint32, payload []byte) {
+func (b *BPlusTree) insertAndsplit(pageNo uint32, key uint64, child uint32, payload []byte) {
 	oldLeftMaxKey := b.getMaxKey(pageNo)
 
 	rightPageNo := b.insertAndSplitKey(pageNo, key, child, payload)
@@ -570,18 +578,20 @@ func (b *bplusTree) insertAndsplit(pageNo uint32, key uint64, child uint32, payl
 	}
 }
 
-func (b *bplusTree) insert(key uint64, payload []byte) {
+// Insert to insert payload to b+ tree
+func (b *BPlusTree) Insert(key uint64, payload []byte) {
 	// search leaf node
 	pageNo := b.search(key)
 	b.insertKey(pageNo, key, 0, payload)
 }
 
-func (b *bplusTree) get(key uint64) []byte {
+// Get to get payload from b+ tree
+func (b *BPlusTree) Get(key uint64) []byte {
 	page := b.search(key)
 	return b.getKeyPayload(page, key)
 }
 
-func (b *bplusTree) insertKey(pageNo uint32, key uint64, child uint32, payload []byte) {
+func (b *BPlusTree) insertKey(pageNo uint32, key uint64, child uint32, payload []byte) {
 	numberOfKey := b.getNumberOfKey(pageNo)
 	if numberOfKey != uint32(b.order) {
 		b.insertAndNotSplit(pageNo, key, child, payload)
@@ -590,7 +600,7 @@ func (b *bplusTree) insertKey(pageNo uint32, key uint64, child uint32, payload [
 	}
 }
 
-func (b *bplusTree) printKey(pageNo uint32) {
+func (b *BPlusTree) printKey(pageNo uint32) {
 	numberOfKey := int(b.getNumberOfKey(pageNo))
 	parent := b.getParent(pageNo)
 	next := b.getNext(pageNo)
@@ -606,7 +616,7 @@ func (b *bplusTree) printKey(pageNo uint32) {
 	fmt.Println()
 }
 
-func (b *bplusTree) printInternalNode(pageNo uint32) {
+func (b *BPlusTree) printInternalNode(pageNo uint32) {
 	b.printKey(pageNo)
 	numberOfKey := int(b.getNumberOfKey(pageNo))
 	for i := 0; i < numberOfKey; i++ {
@@ -622,7 +632,8 @@ func (b *bplusTree) printInternalNode(pageNo uint32) {
 	}
 }
 
-func (b *bplusTree) print() {
+// Print to print b+ tree
+func (b *BPlusTree) Print() {
 	fmt.Printf("leaf is %d.\n", b.leaf)
 	t := b.getNodeType(rootPageNo)
 	if t == nodeTypeLeaf {
@@ -632,50 +643,34 @@ func (b *bplusTree) print() {
 	}
 }
 
-func main() {
-	tree := new(bplusTree)
+// LoadBtree load data to bplustree
+func LoadBtree(fileName string) *BPlusTree {
+	tree := new(BPlusTree)
 
 	data, err := ioutil.ReadFile("db0.log")
 	if err != nil {
-		return
+		return nil
 	}
 	tree.data = data
 	tree.order = int(getInt32(data, 0))
 	tree.leaf = getInt32(data, 4)
 
-	// tree.order = 3
-	// tree.data = make([]byte, pageSize*32)
-	// for i := 0; i < 32; i++ {
-	// 	tree.setPageNo(uint32(i), uint32(i))
-	// 	tree.setUsed(uint32(i), nodeUnused)
-	// 	tree.setUsablePtr(uint32(i), offsetPayload)
-	// }
-	// tree.leaf = rootPageNo
-	// tree.setNodeType(rootPageNo, nodeTypeLeaf)
-	// tree.setUsed(rootPageNo, nodeUsed)
+	return tree
+}
 
-	// tree.insert(5, []byte("val-5"))
-	// tree.insert(2, []byte("val-222"))
-	// tree.insert(15, []byte("val-1555"))
-	// tree.insert(4, []byte("val-44444"))
-	// tree.insert(7, []byte("val-7"))
-	// tree.insert(9, []byte("val-9"))
-	// tree.insert(19, []byte("val-19"))
-	// tree.insert(11, []byte("val-11"))
-	// tree.insert(1, []byte("val-1"))
-	// tree.insert(32, []byte("val-32"))
-	// tree.insert(21, []byte("val-21"))
-	tree.print()
+// CreateTree to create b+ tree with order
+func CreateTree(order int) *BPlusTree {
+	tree := new(BPlusTree)
+	tree.order = order
+	tree.data = make([]byte, pageSize*32)
+	for i := 0; i < 32; i++ {
+		tree.setPageNo(uint32(i), uint32(i))
+		tree.setUsed(uint32(i), nodeUnused)
+		tree.setUsablePtr(uint32(i), offsetPayload)
+	}
+	tree.leaf = rootPageNo
+	tree.setNodeType(rootPageNo, nodeTypeLeaf)
+	tree.setUsed(rootPageNo, nodeUsed)
 
-	b := tree.get(15)
-	fmt.Printf("payload is [%s]\n", string(b))
-
-	// tree.setChild(3, 2, 0, []byte("wangzhddddd"))
-	b = tree.get(4)
-	fmt.Printf("payload is [%s] \n", string(b))
-
-	b = tree.get(1)
-	fmt.Printf("payload is [%s] \n", string(b))
-	tree.rangeSearch(4, 15)
-	tree.write()
+	return tree
 }
