@@ -13,7 +13,7 @@ func TestLoadFile(t *testing.T) {
 }
 
 func TestBtree(t *testing.T) {
-	tree := gosqlite.CreateTree(3)
+	tree := gosqlite.CreateTree(5)
 	tree.Insert(5, []byte("val-5"))
 	tree.Insert(2, []byte("val-222"))
 	tree.Insert(15, []byte("val-1555"))

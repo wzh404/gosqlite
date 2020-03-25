@@ -284,14 +284,14 @@ func (b *BPlusTree) deleteCell(page uint32, index int) {
 func (b *BPlusTree) insertOrUpdateCell(page uint32, index int, cell []byte) {
 	cellPtr := b.getCellPtr(page, index)
 	data := b.getPageData(page)
+	oldCell := b.getKeyCell(page, b.getKey(page, index))
 	shiftSize := 0
 	// insert cell
 	if cellPtr == 0 {
 		cellPtr = b.getUsablePtr(page) - uint32(len(cell))
 		b.setCellPtr(page, index, uint32(cellPtr))
 		b.setUsablePtr(page, cellPtr)
-	} else { // update cell
-		oldCell := b.getKeyCell(page, b.getKey(page, index))
+	} else if oldCell != nil { // update cell
 		shiftSize = len(oldCell) - len(cell)
 		usablePtr := b.getUsablePtr(page)
 		len := int(cellPtr - usablePtr)
