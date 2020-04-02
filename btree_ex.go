@@ -218,17 +218,17 @@ func (b *BPlusTree) getChildByKey(page uint32, key uint64) uint32 {
 }
 
 func (b *BPlusTree) marshal(child uint32, payload []byte) []byte {
+	var cell []byte
 	if payload != nil {
-		cell := make([]byte, 8+len(payload))
+		cell = make([]byte, 8+len(payload))
 		binary.BigEndian.PutUint32(cell, child)
 		binary.BigEndian.PutUint32(cell[4:], uint32(len(payload)))
 		blockCopy(payload, 0, cell, 8, len(payload))
-		return cell
 	} else {
-		cell := make([]byte, 4)
+		cell = make([]byte, 4)
 		binary.BigEndian.PutUint32(cell, child)
-		return cell
 	}
+	return cell
 }
 
 func lshift(data []byte, src int, len int, shiftSize int) {
@@ -311,20 +311,21 @@ func (b *BPlusTree) getKeyCell(page uint32, key uint64) []byte {
 		return nil
 	}
 	offset := b.getCellPtr(page, index)
+
+	var cell []byte
 	if b.getNodeType(page) == nodeTypeLeaf {
 		data := b.getPageData(page)
 		payloadSize := binary.BigEndian.Uint32(data[offset+4:])
-		cell := make([]byte, 8+payloadSize)
+		cell = make([]byte, 8+payloadSize)
 
 		blockCopy(data, int(offset), cell, 0, len(cell))
-		return cell
 	} else {
-		cell := make([]byte, 4)
+		cell = make([]byte, 4)
 
 		data := b.getPageData(page)
 		blockCopy(data, int(offset), cell, 0, len(cell))
-		return cell
 	}
+	return cell
 }
 
 func (b *BPlusTree) getKeyPayload(page uint32, key uint64) []byte {
